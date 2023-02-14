@@ -2,6 +2,7 @@ package pyritego
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -35,4 +36,9 @@ func CastToRequest(raw []byte) (*Request, error) {
 		Sequence:   sequence,
 		Body:       splits[4],
 	}, nil
+}
+
+// 此函数不检查长度是否超标
+func (r Request) ToBytes() []byte {
+	return []byte(fmt.Sprintf("%s\n%s\n%d\n\n%s", r.Session, r.Identifier, r.Sequence, r.Body))
 }
