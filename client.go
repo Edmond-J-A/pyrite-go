@@ -92,11 +92,7 @@ func (c *Client) hello() error {
 	}
 
 	c.status = CLIENT_ESTABLISHED
-	c.Write(Response{
-		Session:    c.Session,
-		Identifier: "prt-established",
-		Sequence:   c.getSequence(),
-	})
+	c.Write("prt-established", "")
 	return nil
 }
 
@@ -153,8 +149,13 @@ func (c *Client) Tell(identifier, body string) (*Response, error) {
 }
 
 // 向对方发送消息，但是不期待 ACK
-func (c *Client) Write(resp Response) {
-	c.connection.Write(resp.ToBytes())
+func (c *Client) Write(identifier, body string) {
+	c.connection.Write(Request{
+		Session:    c.Session,
+		Identifier: identifier,
+		Sequence:   -1,
+		Body:       body,
+	}.ToBytes())
 }
 
 func (c *Client) processAck(response *Response) {
@@ -195,7 +196,7 @@ func (c *Client) process(recv []byte) {
 	}
 
 	resp.Identifier = "prt-ack"
-	c.Write(*resp)
+	c.connection.Write(resp.ToBytes())
 }
 
 func (c *Client) Start() {
