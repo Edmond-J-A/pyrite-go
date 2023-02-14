@@ -120,8 +120,7 @@ func (c *Client) DelSession()
 //
 // 此函数会阻塞线程
 func (c *Client) Tell(req Request) (*Response, error) {
-	recvBuf := make([]byte, MAX_TRANSMIT_SIZE)
-	var n int
+	var response *Response
 	var err error
 
 	reqBytes := req.ToBytes()
@@ -134,20 +133,19 @@ func (c *Client) Tell(req Request) (*Response, error) {
 	ch := make(chan bool)
 	go Timer(c.timeout, ch, false)
 
-	go func(n *int, err *error, ch chan bool) {
+	go func(err *error, ch chan bool) {
 		defer func() { recover() }()
-		*n, *err = c.connection.Read(recvBuf)
+		response = <-c.sequenceBuff[req.Sequence]
 		ch <- true
-	}(&n, &err, ch)
+	}(&err, ch)
 
 	ok := <-ch
 	close(ch)
-
-	if !ok || n == 0 {
+	if !ok {
 		return nil, ErrClientTellServerTimeout
 	}
 
-	return CastToResponse(recvBuf[:n])
+	return response, nil
 }
 
 // 向对方发送消息，但是不期待 ACK
