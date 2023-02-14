@@ -1,6 +1,8 @@
 package pyritego
 
 import (
+	"errors"
+	"log"
 	"net"
 	"time"
 )
@@ -13,6 +15,10 @@ type Server struct {
 	lastAccept  map[string]int64
 	maxLifeTime int64
 }
+
+var (
+	ErrServerUDPStartingFailed = errors.New("fail to start udp server")
+)
 
 func NewServer(port int, maxTime int64) (*Server, error) {
 
@@ -37,20 +43,32 @@ func (s *Server) DelSession(session string) {
 }
 
 func (s *Server) Tell(remote *net.UDPAddr, identifier, body string) (Response, error)
+
 func (s *Server) Start() error {
 	listener, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("0.0.0.0"), Port: s.port})
 	if err != nil {
 		return ErrServerUDPStartingFailed
 	}
-	data := make([]byte, 1025)
+
+	recvBuf := make([]byte, MAX_TRANSMIT_SIZE)
 	for {
-		listener.Read(data)
+		n, err := listener.Read(recvBuf)
+		if err != nil {
+			log.Default()
+		}
+
+		request, err := CastToRequest(recvBuf[:n])
+		if err != nil {
+			log.Default()
+		}
+		s.lastAccept[request.Session] = time.Now().UnixMicro()
+		s.router[request.Identifier](*request)
+
 	}
-	return nil
 }
 
 func (s *Server) GC() {
-	nowTime := time.Now().Unix()
+	nowTime := time.Now().UnixMicro()
 	for k, v := range s.lastAccept {
 		if nowTime-v >= s.maxLifeTime {
 			delete(s.lastAccept, k)
