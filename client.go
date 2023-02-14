@@ -129,6 +129,7 @@ func (c *Client) Tell(req Request) (*Response, error) {
 	}
 
 	c.connection.Write(req.ToBytes())
+	c.sequenceBuff[req.Sequence] = make(chan *Response)
 
 	ch := make(chan bool)
 	go Timer(c.timeout, ch, false)
@@ -153,8 +154,15 @@ func (c *Client) Write(resp Response) {
 	c.connection.Write(resp.ToBytes())
 }
 
-func processAck(response *Response) {
+func (c *Client) processAck(response *Response) {
+	ch, ok := c.sequenceBuff[response.Sequence]
+	if !ok {
+		return
+	}
 
+	ch <- response
+	close(ch)
+	delete(c.sequenceBuff, response.Sequence)
 }
 
 func (c *Client) process(recv []byte) {
@@ -164,7 +172,7 @@ func (c *Client) process(recv []byte) {
 	}
 
 	if response.Identifier == "prt-ack" {
-		processAck(response)
+		c.processAck(response)
 		return
 	}
 
