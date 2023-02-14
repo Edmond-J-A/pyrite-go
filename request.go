@@ -9,3 +9,11 @@ type Request struct {
 	SessionData interface{}
 	Body        string
 }
+
+func (r *Request) SetSession(data interface{}) {
+
+}
+
+func (r *Request) DelSession() {
+
+}
