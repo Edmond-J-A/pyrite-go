@@ -95,7 +95,7 @@ func (c *Client) hello() error {
 	}
 
 	c.status = CLIENT_ESTABLISHED
-	c.Write(Request{
+	c.Write(Response{
 		Session:    c.Session,
 		Identifier: "prt-established",
 		Sequence:   c.getSequence(),
@@ -149,6 +149,58 @@ func (c *Client) Tell(req Request) (*Response, error) {
 }
 
 // 向对方发送消息，但是不期待 ACK
-func (c *Client) Write(req Request) {
-	c.connection.Write(req.ToBytes())
+func (c *Client) Write(resp Response) {
+	c.connection.Write(resp.ToBytes())
+}
+
+func processAck(response *Response) {
+
+}
+
+func (c *Client) process(recv []byte) {
+	response, err := CastToResponse(recv)
+	if err != nil {
+		return
+	}
+
+	if response.Identifier == "prt-ack" {
+		processAck(response)
+		return
+	}
+
+	request, err := CastToRequest(recv)
+	if err != nil {
+		return
+	}
+
+	f, ok := c.router[request.Identifier]
+	if !ok {
+		return
+	}
+
+	resp := f(*request)
+	if resp == nil {
+		return
+	}
+
+	resp.Identifier = "prt-ack"
+	c.Write(*resp)
+}
+
+func (c *Client) Start() {
+	if c.status != CLIENT_ESTABLISHED {
+		panic("invalid client status")
+	}
+
+	recvBuf := make([]byte, MAX_TRANSMIT_SIZE)
+	var n int
+	var err error
+	for {
+		n, err = c.connection.Read(recvBuf)
+		if err != nil || n == 0 {
+			panic("invalid msg recved")
+		}
+
+		go c.process(recvBuf[:n])
+	}
 }
