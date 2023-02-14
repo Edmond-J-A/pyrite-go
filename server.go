@@ -2,11 +2,11 @@ package pyritego
 
 import (
 	"net"
+	"time"
 )
 
 type Server struct {
 	port        int
-	listener    *net.UDPConn
 	router      map[string]func(Request) Response
 	session     map[string]interface{}
 	rtt         map[string]int64
@@ -14,14 +14,11 @@ type Server struct {
 	maxLifeTime int64
 }
 
-func NewServer(port int, enableSession bool, maxTime int64) (*Server, error) {
+func NewServer(port int, maxTime int64) (*Server, error) {
 
 	var server Server
 	server.port = port
 	server.router = make(map[string]func(Request) Response)
-	if enableSession {
-		server.session = make(map[string]interface{})
-	}
 
 	server.maxLifeTime = maxTime
 	return &server, nil
@@ -45,8 +42,17 @@ func (s *Server) Start() error {
 	if err != nil {
 		return ErrServerUDPStartingFailed
 	}
-	s.listener = listener
+
 	return nil
 }
 
-func (s *Server) GC()
+func (s *Server) GC() {
+	nowTime := time.Now().Unix()
+	for k, v := range s.lastAccept {
+		if nowTime-v >= s.maxLifeTime {
+			delete(s.lastAccept, k)
+			delete(s.rtt, k)
+			delete(s.session, k)
+		}
+	}
+}
