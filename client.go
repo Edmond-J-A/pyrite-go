@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -90,6 +91,15 @@ func (c *Client) hello() error {
 }
 
 func (c *Client) Refresh() error
-func (c *Client) AddRouter(identifier string, controller func(Request) *Response)
+
+func (c *Client) AddRouter(identifier string, controller func(Request) *Response) bool {
+	if strings.Index(identifier, "prt-") == 0 {
+		return false
+	}
+
+	c.router[identifier] = controller
+	return true
+}
+
 func (c *Client) DelSession()
 func (c *Client) Tell(identifier, body string) (Response, error)
