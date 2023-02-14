@@ -59,31 +59,17 @@ func NewClient(serverAddr net.UDPAddr, timeout time.Duration) (*Client, error) {
 }
 
 func (c *Client) hello() error {
+	var err error
 	if c.status != CLIENT_CREATED {
 		return ErrClientIllegalOperation
 	}
 
-	msg := Request{
-		Identifier: "prt-hello",
-	}.ToBytes()
-
-	if len(msg) > MAX_TRANSMIT_SIZE {
-		return ErrContentOverflowed
-	}
-
 	start := time.Now().UnixMicro()
 
-	c.connection.Write(msg)
-	recvBuf := make([]byte, MAX_TRANSMIT_SIZE)
-	n, err := c.connection.Read(recvBuf)
-	if err != nil {
-		return err
-	}
-
-	c.RTT = time.Now().UnixMicro() - start
-
-	response, err := CastToResponse(recvBuf[:n])
-	if err != nil {
+	var response *Response
+	if response, err = c.Tell(Request{
+		Identifier: "prt-hello",
+	}); err != nil {
 		return err
 	}
 
@@ -91,13 +77,14 @@ func (c *Client) hello() error {
 		return ErrServerProcotol
 	}
 
+	c.RTT = time.Now().UnixMicro() - start
 	c.Session = response.Session
 	c.MaxLifeTime, err = strconv.ParseInt(response.Body, 10, 64)
 	if err != nil {
 		return ErrServerProcotol
 	}
 
-	msg = Request{
+	msg := Request{
 		Session:    c.Session,
 		Identifier: "prt-established",
 	}.ToBytes()
@@ -119,10 +106,18 @@ func (c *Client) AddRouter(identifier string, controller func(Request) *Response
 
 func (c *Client) DelSession()
 
+// 向对方发送信息，并且期待 ACK
+//
+// 此函数会阻塞线程
 func (c *Client) Tell(req Request) (*Response, error) {
 	recvBuf := make([]byte, MAX_TRANSMIT_SIZE)
 	var n int
 	var err error
+
+	reqBytes := req.ToBytes()
+	if len(reqBytes) > MAX_TRANSMIT_SIZE {
+		return nil, ErrContentOverflowed
+	}
 
 	c.connection.Write(req.ToBytes())
 
