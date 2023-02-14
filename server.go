@@ -5,7 +5,8 @@ import (
 )
 
 type Server struct {
-	listener    net.UDPConn
+	port        int
+	listener    *net.UDPConn
 	router      map[string]func(Request) Response
 	session     map[string]interface{}
 	rtt         map[string]int64
@@ -16,23 +17,39 @@ type Server struct {
 func NewServer(port int, enableSession bool, maxTime int64) (*Server, error) {
 
 	var server Server
-	listener, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("0.0.0.0"), Port: port})
-	server.listener = listener
-	if err != nil {
-		return nil, ErrUDPServerStartingFailed
-	}
-
+	server.port = port
+	server.router = make(map[string]func(Request) Response)
 	if enableSession {
 		server.session = make(map[string]interface{})
 	}
-	server.maxLifeTime = maxTime
 
+	server.maxLifeTime = maxTime
 	return &server, nil
 }
 
-func (s *Server) AddRouter(identifier string, controller func(Request) Response)
-func (s *Server) SetSession(session string, data interface{})
-func (s *Server) DelSession(session string)
-func (s *Server) Tell(remote *net.UDPAddr, identifier, body string) (Response, error)
-func (s *Server) Start()
+func (s *Server) AddRouter(identifier string, controller func(Request) Response) {
+	s.router[identifier] = controller
+}
+
+func (s *Server) SetSession(session string, data interface{}) {
+	s.session[session] = data
+}
+
+func (s *Server) DelSession(session string) {
+
+}
+
+func (s *Server) Tell(remote *net.UDPAddr, identifier, body string) (Response, error) {
+
+}
+
+func (s *Server) Start() error {
+	listener, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("0.0.0.0"), Port: s.port})
+	if err != nil {
+		return ErrUDPServerStartingFailed
+	}
+	s.listener = listener
+	return nil
+}
+
 func (s *Server) GC()
