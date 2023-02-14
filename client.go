@@ -15,7 +15,7 @@ const (
 
 type Client struct {
 	server     net.UDPAddr
-	router     map[string]func(Request) Response
+	router     map[string]func(Request) *Response
 	connection *net.UDPConn
 	status     int
 
@@ -38,20 +38,14 @@ func NewClient(serverAddr net.UDPAddr) (*Client, error) {
 		return nil, ErrClientUDPBindingFailed
 	}
 
-	router := make(map[string]func(Request) Response)
-	ret := &Client{
+	router := make(map[string]func(Request) *Response)
+	return &Client{
 		server:     serverAddr,
 		router:     router,
 		Session:    "",
 		connection: connection,
 		status:     CLIENT_CREATED,
-	}
-
-	if err = ret.hello(); err != nil {
-		return nil, err
-	}
-
-	return ret, nil
+	}, nil
 }
 
 func (c *Client) hello() error {
@@ -96,6 +90,6 @@ func (c *Client) hello() error {
 }
 
 func (c *Client) Refresh() error
-func (c *Client) AddRouter(identifier string, controller func(Request) Response)
+func (c *Client) AddRouter(identifier string, controller func(Request) *Response)
 func (c *Client) DelSession()
 func (c *Client) Tell(identifier, body string) (Response, error)
