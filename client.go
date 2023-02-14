@@ -76,10 +76,7 @@ func (c *Client) hello() error {
 	start := time.Now().UnixMicro()
 
 	var response *Response
-	if response, err = c.Tell(Request{
-		Identifier: "prt-hello",
-		Sequence:   c.getSequence(),
-	}); err != nil {
+	if response, err = c.Tell("prt-hello", ""); err != nil {
 		return err
 	}
 
@@ -119,9 +116,15 @@ func (c *Client) DelSession()
 // 向对方发送信息，并且期待 ACK
 //
 // 此函数会阻塞线程
-func (c *Client) Tell(req Request) (*Response, error) {
+func (c *Client) Tell(identifier, body string) (*Response, error) {
 	var response *Response
 	var err error
+	req := Request{
+		Session:    c.Session,
+		Identifier: identifier,
+		Sequence:   c.getSequence(),
+		Body:       body,
+	}
 
 	reqBytes := req.ToBytes()
 	if len(reqBytes) > MAX_TRANSMIT_SIZE {
