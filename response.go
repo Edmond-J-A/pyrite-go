@@ -2,6 +2,7 @@ package pyritego
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"strings"
 )
@@ -35,4 +36,8 @@ func CastToResponse(raw []byte) (*Response, error) {
 		Sequence:   sequence,
 		Body:       splits[4],
 	}, nil
+}
+
+func (r Response) ToBytes() []byte {
+	return []byte(fmt.Sprintf("%s\n%s\n%d\n\n%s", r.Session, r.Identifier, r.Sequence, r.Body))
 }
