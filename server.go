@@ -35,12 +35,15 @@ func (s *Server) SetSession(session string, data interface{}) {
 	s.session[session] = data
 }
 
-func (s *Server) DelSession(session string)
+func (s *Server) DelSession(session string) {
+	delete(s.session, session)
+}
+
 func (s *Server) Tell(remote *net.UDPAddr, identifier, body string) (Response, error)
 func (s *Server) Start() error {
 	listener, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("0.0.0.0"), Port: s.port})
 	if err != nil {
-		return ErrUDPServerStartingFailed
+		return ErrServerUDPStartingFailed
 	}
 	s.listener = listener
 	return nil
