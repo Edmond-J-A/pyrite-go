@@ -42,7 +42,10 @@ func (s *Server) Start() error {
 	if err != nil {
 		return ErrServerUDPStartingFailed
 	}
-
+	data := make([]byte, 1025)
+	for {
+		listener.Read(data)
+	}
 	return nil
 }
 
