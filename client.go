@@ -23,6 +23,9 @@ type Client struct {
 	MaxLifeTime int64
 	RTT         int64
 	timeout     time.Duration
+
+	sequence     int                    // 下一个 sequence
+	sequenceBuff map[int]chan *Response // 暂存已发但未确认的包
 }
 
 var (
@@ -48,6 +51,7 @@ func NewClient(serverAddr net.UDPAddr, timeout time.Duration) (*Client, error) {
 		connection: connection,
 		status:     CLIENT_CREATED,
 		timeout:    timeout,
+		sequence:   0,
 	}
 
 	err = ret.hello()
@@ -56,6 +60,11 @@ func NewClient(serverAddr net.UDPAddr, timeout time.Duration) (*Client, error) {
 	}
 
 	return ret, nil
+}
+
+func (c *Client) getSequence() int {
+	c.sequence += 1
+	return c.sequence - 1
 }
 
 func (c *Client) hello() error {
@@ -69,6 +78,7 @@ func (c *Client) hello() error {
 	var response *Response
 	if response, err = c.Tell(Request{
 		Identifier: "prt-hello",
+		Sequence:   c.getSequence(),
 	}); err != nil {
 		return err
 	}
@@ -88,6 +98,7 @@ func (c *Client) hello() error {
 	c.Write(Request{
 		Session:    c.Session,
 		Identifier: "prt-established",
+		Sequence:   c.getSequence(),
 	})
 	return nil
 }
