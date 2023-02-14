@@ -10,7 +10,7 @@ import (
 type Response struct {
 	Session    string
 	Identifier string
-	Sequence   int
+	sequence   int
 	Body       string
 }
 
@@ -33,11 +33,11 @@ func CastToResponse(raw []byte) (*Response, error) {
 	return &Response{
 		Session:    splits[0],
 		Identifier: splits[1],
-		Sequence:   sequence,
+		sequence:   sequence,
 		Body:       splits[4],
 	}, nil
 }
 
 func (r Response) ToBytes() []byte {
-	return []byte(fmt.Sprintf("%s\n%s\n%d\n\n%s", r.Session, r.Identifier, r.Sequence, r.Body))
+	return []byte(fmt.Sprintf("%s\n%s\n%d\n\n%s", r.Session, r.Identifier, r.sequence, r.Body))
 }

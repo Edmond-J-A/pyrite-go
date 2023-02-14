@@ -10,7 +10,7 @@ import (
 type Request struct {
 	Session    string
 	Identifier string
-	Sequence   int
+	sequence   int
 	Body       string
 }
 
@@ -33,12 +33,12 @@ func CastToRequest(raw []byte) (*Request, error) {
 	return &Request{
 		Session:    splits[0],
 		Identifier: splits[1],
-		Sequence:   sequence,
+		sequence:   sequence,
 		Body:       splits[4],
 	}, nil
 }
 
 // 此函数不检查长度是否超标
 func (r Request) ToBytes() []byte {
-	return []byte(fmt.Sprintf("%s\n%s\n%d\n\n%s", r.Session, r.Identifier, r.Sequence, r.Body))
+	return []byte(fmt.Sprintf("%s\n%s\n%d\n\n%s", r.Session, r.Identifier, r.sequence, r.Body))
 }

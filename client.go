@@ -76,10 +76,7 @@ func (c *Client) hello() error {
 	start := time.Now().UnixMicro()
 
 	var response *Response
-	if response, err = c.Tell(Request{
-		Identifier: "prt-hello",
-		Sequence:   c.getSequence(),
-	}); err != nil {
+	if response, err = c.Tell("prt-hello", ""); err != nil {
 		return err
 	}
 
@@ -95,11 +92,7 @@ func (c *Client) hello() error {
 	}
 
 	c.status = CLIENT_ESTABLISHED
-	c.Write(Response{
-		Session:    c.Session,
-		Identifier: "prt-established",
-		Sequence:   c.getSequence(),
-	})
+	c.Write("prt-established", "")
 	return nil
 }
 
@@ -119,9 +112,15 @@ func (c *Client) DelSession()
 // 向对方发送信息，并且期待 ACK
 //
 // 此函数会阻塞线程
-func (c *Client) Tell(req Request) (*Response, error) {
+func (c *Client) Tell(identifier, body string) (*Response, error) {
 	var response *Response
 	var err error
+	req := Request{
+		Session:    c.Session,
+		Identifier: identifier,
+		sequence:   c.getSequence(),
+		Body:       body,
+	}
 
 	reqBytes := req.ToBytes()
 	if len(reqBytes) > MAX_TRANSMIT_SIZE {
@@ -129,14 +128,14 @@ func (c *Client) Tell(req Request) (*Response, error) {
 	}
 
 	c.connection.Write(req.ToBytes())
-	c.sequenceBuff[req.Sequence] = make(chan *Response)
+	c.sequenceBuff[req.sequence] = make(chan *Response)
 
 	ch := make(chan bool)
 	go Timer(c.timeout, ch, false)
 
 	go func(err *error, ch chan bool) {
 		defer func() { recover() }()
-		response = <-c.sequenceBuff[req.Sequence]
+		response = <-c.sequenceBuff[req.sequence]
 		ch <- true
 	}(&err, ch)
 
@@ -150,19 +149,24 @@ func (c *Client) Tell(req Request) (*Response, error) {
 }
 
 // 向对方发送消息，但是不期待 ACK
-func (c *Client) Write(resp Response) {
-	c.connection.Write(resp.ToBytes())
+func (c *Client) Write(identifier, body string) {
+	c.connection.Write(Request{
+		Session:    c.Session,
+		Identifier: identifier,
+		sequence:   -1,
+		Body:       body,
+	}.ToBytes())
 }
 
 func (c *Client) processAck(response *Response) {
-	ch, ok := c.sequenceBuff[response.Sequence]
+	ch, ok := c.sequenceBuff[response.sequence]
 	if !ok {
 		return
 	}
 
 	ch <- response
 	close(ch)
-	delete(c.sequenceBuff, response.Sequence)
+	delete(c.sequenceBuff, response.sequence)
 }
 
 func (c *Client) process(recv []byte) {
@@ -192,7 +196,7 @@ func (c *Client) process(recv []byte) {
 	}
 
 	resp.Identifier = "prt-ack"
-	c.Write(*resp)
+	c.connection.Write(resp.ToBytes())
 }
 
 func (c *Client) Start() {
