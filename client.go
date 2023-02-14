@@ -84,6 +84,7 @@ func (c *Client) hello() error {
 		return ErrServerProcotol
 	}
 
+	c.status = CLIENT_ESTABLISHED
 	c.Write(Request{
 		Session:    c.Session,
 		Identifier: "prt-established",
