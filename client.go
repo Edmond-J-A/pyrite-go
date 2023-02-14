@@ -22,16 +22,18 @@ type Client struct {
 	Session     string
 	MaxLifeTime int64
 	RTT         int64
+	timeout     time.Duration
 }
 
 var (
-	ErrClientIllegalOperation = errors.New("illegal operation")
-	ErrClientUDPBindingFailed = errors.New("udp binding failed")
-	ErrContentOverflowed      = errors.New("content overflowed")
-	ErrServerProcotol         = errors.New("invalid server protocol")
+	ErrClientIllegalOperation  = errors.New("illegal operation")
+	ErrClientUDPBindingFailed  = errors.New("udp binding failed")
+	ErrContentOverflowed       = errors.New("content overflowed")
+	ErrServerProcotol          = errors.New("invalid server protocol")
+	ErrClientTellServerTimeout = errors.New("client tell server timeout")
 )
 
-func NewClient(serverAddr net.UDPAddr) (*Client, error) {
+func NewClient(serverAddr net.UDPAddr, timeout time.Duration) (*Client, error) {
 	src := &net.UDPAddr{IP: net.IPv4zero, Port: 0}
 	connection, err := net.DialUDP("udp", src, &serverAddr)
 	if err != nil {
@@ -45,6 +47,7 @@ func NewClient(serverAddr net.UDPAddr) (*Client, error) {
 		Session:    "",
 		connection: connection,
 		status:     CLIENT_CREATED,
+		timeout:    timeout,
 	}
 
 	err = ret.hello()
@@ -115,4 +118,29 @@ func (c *Client) AddRouter(identifier string, controller func(Request) *Response
 }
 
 func (c *Client) DelSession()
-func (c *Client) Tell(identifier, body string) (Response, error)
+
+func (c *Client) Tell(req Request) (*Response, error) {
+	recvBuf := make([]byte, MAX_TRANSMIT_SIZE)
+	var n int
+	var err error
+
+	c.connection.Write(req.ToBytes())
+
+	ch := make(chan bool)
+	go Timer(c.timeout, ch, false)
+
+	go func(n *int, err *error, ch chan bool) {
+		defer func() { recover() }()
+		*n, *err = c.connection.Read(recvBuf)
+		ch <- true
+	}(&n, &err, ch)
+
+	ok := <-ch
+	close(ch)
+
+	if !ok || n == 0 {
+		return nil, ErrClientTellServerTimeout
+	}
+
+	return CastToResponse(recvBuf[:n])
+}
