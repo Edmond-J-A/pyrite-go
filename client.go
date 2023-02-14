@@ -84,12 +84,10 @@ func (c *Client) hello() error {
 		return ErrServerProcotol
 	}
 
-	msg := Request{
+	c.Write(Request{
 		Session:    c.Session,
 		Identifier: "prt-established",
-	}.ToBytes()
-
-	c.connection.Write(msg)
+	})
 	return nil
 }
 
@@ -138,4 +136,9 @@ func (c *Client) Tell(req Request) (*Response, error) {
 	}
 
 	return CastToResponse(recvBuf[:n])
+}
+
+// 向对方发送消息，但是不期待 ACK
+func (c *Client) Write(req Request) {
+	c.connection.Write(req.ToBytes())
 }
