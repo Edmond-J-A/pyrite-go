@@ -2,7 +2,6 @@ package pyritego
 
 import (
 	"errors"
-	"fmt"
 	"net"
 	"strconv"
 	"strings"
@@ -40,13 +39,20 @@ func NewClient(serverAddr net.UDPAddr) (*Client, error) {
 	}
 
 	router := make(map[string]func(Request) *Response)
-	return &Client{
+	ret := &Client{
 		server:     serverAddr,
 		router:     router,
 		Session:    "",
 		connection: connection,
 		status:     CLIENT_CREATED,
-	}, nil
+	}
+
+	err = ret.hello()
+	if err != nil {
+		return nil, err
+	}
+
+	return ret, nil
 }
 
 func (c *Client) hello() error {
@@ -54,7 +60,10 @@ func (c *Client) hello() error {
 		return ErrClientIllegalOperation
 	}
 
-	msg := []byte("\nhello\n0\n\n")
+	msg := Request{
+		Identifier: "prt-hello",
+	}.ToBytes()
+
 	if len(msg) > MAX_TRANSMIT_SIZE {
 		return ErrContentOverflowed
 	}
@@ -75,7 +84,7 @@ func (c *Client) hello() error {
 		return err
 	}
 
-	if response.Identifier != "hello" {
+	if response.Identifier != "prt-hello" {
 		return ErrServerProcotol
 	}
 
@@ -85,7 +94,11 @@ func (c *Client) hello() error {
 		return ErrServerProcotol
 	}
 
-	msg = []byte(fmt.Sprintf("%s\nestablished\n0\n\n", c.Session))
+	msg = Request{
+		Session:    c.Session,
+		Identifier: "prt-established",
+	}.ToBytes()
+
 	c.connection.Write(msg)
 	return nil
 }
