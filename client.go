@@ -118,7 +118,7 @@ func (c *Client) Tell(identifier, body string) (*Response, error) {
 	req := Request{
 		Session:    c.Session,
 		Identifier: identifier,
-		Sequence:   c.getSequence(),
+		sequence:   c.getSequence(),
 		Body:       body,
 	}
 
@@ -128,14 +128,14 @@ func (c *Client) Tell(identifier, body string) (*Response, error) {
 	}
 
 	c.connection.Write(req.ToBytes())
-	c.sequenceBuff[req.Sequence] = make(chan *Response)
+	c.sequenceBuff[req.sequence] = make(chan *Response)
 
 	ch := make(chan bool)
 	go Timer(c.timeout, ch, false)
 
 	go func(err *error, ch chan bool) {
 		defer func() { recover() }()
-		response = <-c.sequenceBuff[req.Sequence]
+		response = <-c.sequenceBuff[req.sequence]
 		ch <- true
 	}(&err, ch)
 
@@ -153,20 +153,20 @@ func (c *Client) Write(identifier, body string) {
 	c.connection.Write(Request{
 		Session:    c.Session,
 		Identifier: identifier,
-		Sequence:   -1,
+		sequence:   -1,
 		Body:       body,
 	}.ToBytes())
 }
 
 func (c *Client) processAck(response *Response) {
-	ch, ok := c.sequenceBuff[response.Sequence]
+	ch, ok := c.sequenceBuff[response.sequence]
 	if !ok {
 		return
 	}
 
 	ch <- response
 	close(ch)
-	delete(c.sequenceBuff, response.Sequence)
+	delete(c.sequenceBuff, response.sequence)
 }
 
 func (c *Client) process(recv []byte) {
