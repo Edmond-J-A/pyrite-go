@@ -3,26 +3,17 @@ package pyritego
 import (
 	"errors"
 	"net"
-	"strconv"
 	"strings"
 	"time"
 )
 
-const (
-	CLIENT_CREATED     = 0
-	CLIENT_ESTABLISHED = 1
-)
-
 type Client struct {
 	server     net.UDPAddr
-	router     map[string]func(PrtPackage) *PrtPackage
+	router     map[string]func(string) string
 	connection *net.UDPConn
-	status     int
 
-	session     string
-	maxLifeTime int64
-	rtt         int64
-	timeout     time.Duration
+	session string
+	timeout time.Duration
 
 	sequence      int                      // 下一个 sequence
 	promiseBuffer map[int]chan *PrtPackage // 暂存已发但未确认的包
@@ -43,17 +34,13 @@ func NewClient(serverAddr net.UDPAddr, timeout time.Duration) (*Client, error) {
 		return nil, ErrClientUDPBindingFailed
 	}
 
-	router := make(map[string]func(PrtPackage) *PrtPackage)
-	ret := &Client{
+	return &Client{
 		server:     serverAddr,
-		router:     router,
+		router:     make(map[string]func(string) string),
 		connection: connection,
-		status:     CLIENT_CREATED,
 		timeout:    timeout,
 		sequence:   0,
-	}
-
-	return ret, ret.hello()
+	}, nil
 }
 
 func (c *Client) getSequence() int {
@@ -61,33 +48,9 @@ func (c *Client) getSequence() int {
 	return c.sequence - 1
 }
 
-func (c *Client) hello() error {
-	var err error
-	if c.status != CLIENT_CREATED {
-		return ErrClientIllegalOperation
-	}
-
-	start := time.Now().UnixMicro()
-	var response *PrtPackage
-	if response, err = c.Promise("prt-hello", ""); err != nil {
-		return err
-	}
-
-	c.rtt = time.Now().UnixMicro() - start
-	c.session = response.Session
-	c.maxLifeTime, err = strconv.ParseInt(response.Body, 10, 64)
-	if err != nil {
-		return ErrServerProcotol
-	}
-
-	c.status = CLIENT_ESTABLISHED
-	c.Tell("prt-established", "")
-	return nil
-}
-
 func (c *Client) Refresh() error
 
-func (c *Client) AddRouter(identifier string, controller func(PrtPackage) *PrtPackage) bool {
+func (c *Client) AddRouter(identifier string, controller func(string) string) bool {
 	if strings.Index(identifier, "prt-") == 0 {
 		return false
 	}
@@ -96,14 +59,10 @@ func (c *Client) AddRouter(identifier string, controller func(PrtPackage) *PrtPa
 	return true
 }
 
-func (c *Client) DelSession()
-
 // 向对方发送信息，并且期待 ACK
 //
 // 此函数会阻塞线程
-func (c *Client) Promise(identifier, body string) (*PrtPackage, error) {
-	var response *PrtPackage
-	var err error
+func (c *Client) Promise(identifier, body string) (string, error) {
 	req := PrtPackage{
 		Session:    c.session,
 		Identifier: identifier,
@@ -113,7 +72,7 @@ func (c *Client) Promise(identifier, body string) (*PrtPackage, error) {
 
 	reqBytes := req.ToBytes()
 	if len(reqBytes) > MAX_TRANSMIT_SIZE {
-		return nil, ErrContentOverflowed
+		return "", ErrContentOverflowed
 	}
 
 	c.connection.Write(req.ToBytes())
@@ -122,19 +81,20 @@ func (c *Client) Promise(identifier, body string) (*PrtPackage, error) {
 	ch := make(chan bool)
 	go Timer(c.timeout, ch, false)
 
-	go func(err *error, ch chan bool) {
+	var response *PrtPackage
+	go func() {
 		defer func() { recover() }()
 		response = <-c.promiseBuffer[req.sequence]
 		ch <- true
-	}(&err, ch)
+	}()
 
 	ok := <-ch
 	close(ch)
 	if !ok {
-		return nil, ErrClientTellServerTimeout
+		return "", ErrClientTellServerTimeout
 	}
 
-	return response, nil
+	return response.Body, nil
 }
 
 // 向对方发送消息，但是不期待 ACK
@@ -159,35 +119,35 @@ func (c *Client) processAck(response *PrtPackage) {
 }
 
 func (c *Client) process(recv []byte) {
-	prt, err := CastToPrtpackage(recv)
+	req, err := CastToPrtpackage(recv)
 	if err != nil {
 		return
 	}
 
-	if prt.Identifier == "prt-ack" {
-		c.processAck(prt)
+	if req.Identifier == "prt-ack" {
+		c.processAck(req)
 		return
 	}
 
-	f, ok := c.router[prt.Identifier]
+	f, ok := c.router[req.Identifier]
 	if !ok {
 		return
 	}
 
-	resp := f(*prt)
-	if resp == nil {
+	resp := f(req.Body)
+	if resp == "" {
 		return
 	}
 
-	resp.Identifier = "prt-ack"
-	c.connection.Write(resp.ToBytes())
+	c.connection.Write(PrtPackage{
+		Session:    c.session,
+		Identifier: "prt-ack",
+		sequence:   req.sequence,
+		Body:       resp,
+	}.ToBytes())
 }
 
 func (c *Client) Start() {
-	if c.status != CLIENT_ESTABLISHED {
-		panic("invalid client status")
-	}
-
 	recvBuf := make([]byte, MAX_TRANSMIT_SIZE)
 	var n int
 	var err error
@@ -197,6 +157,11 @@ func (c *Client) Start() {
 			panic("invalid msg recved")
 		}
 
-		go c.process(recvBuf[:n])
+		slice := make([]byte, n)
+		if copy(slice, recvBuf) != n {
+			panic("invalid copy in client main loop")
+		}
+
+		go c.process(slice)
 	}
 }
