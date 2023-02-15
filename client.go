@@ -34,10 +34,9 @@ func NewClient(serverAddr net.UDPAddr, timeout time.Duration) (*Client, error) {
 		return nil, ErrClientUDPBindingFailed
 	}
 
-	router := make(map[string]func(PrtPackage) *PrtPackage)
 	return &Client{
 		server:     serverAddr,
-		router:     router,
+		router:     make(map[string]func(PrtPackage) *PrtPackage),
 		connection: connection,
 		timeout:    timeout,
 		sequence:   0,
