@@ -3,26 +3,17 @@ package pyritego
 import (
 	"errors"
 	"net"
-	"strconv"
 	"strings"
 	"time"
-)
-
-const (
-	CLIENT_CREATED     = 0
-	CLIENT_ESTABLISHED = 1
 )
 
 type Client struct {
 	server     net.UDPAddr
 	router     map[string]func(PrtPackage) *PrtPackage
 	connection *net.UDPConn
-	status     int
 
-	session     string
-	maxLifeTime int64
-	rtt         int64
-	timeout     time.Duration
+	session string
+	timeout time.Duration
 
 	sequence      int                      // 下一个 sequence
 	promiseBuffer map[int]chan *PrtPackage // 暂存已发但未确认的包
@@ -44,45 +35,18 @@ func NewClient(serverAddr net.UDPAddr, timeout time.Duration) (*Client, error) {
 	}
 
 	router := make(map[string]func(PrtPackage) *PrtPackage)
-	ret := &Client{
+	return &Client{
 		server:     serverAddr,
 		router:     router,
 		connection: connection,
-		status:     CLIENT_CREATED,
 		timeout:    timeout,
 		sequence:   0,
-	}
-
-	return ret, ret.hello()
+	}, nil
 }
 
 func (c *Client) getSequence() int {
 	c.sequence += 1
 	return c.sequence - 1
-}
-
-func (c *Client) hello() error {
-	var err error
-	if c.status != CLIENT_CREATED {
-		return ErrClientIllegalOperation
-	}
-
-	start := time.Now().UnixMicro()
-	var response *PrtPackage
-	if response, err = c.Promise("prt-hello", ""); err != nil {
-		return err
-	}
-
-	c.rtt = time.Now().UnixMicro() - start
-	c.session = response.Session
-	c.maxLifeTime, err = strconv.ParseInt(response.Body, 10, 64)
-	if err != nil {
-		return ErrServerProcotol
-	}
-
-	c.status = CLIENT_ESTABLISHED
-	c.Tell("prt-established", "")
-	return nil
 }
 
 func (c *Client) Refresh() error
@@ -95,8 +59,6 @@ func (c *Client) AddRouter(identifier string, controller func(PrtPackage) *PrtPa
 	c.router[identifier] = controller
 	return true
 }
-
-func (c *Client) DelSession()
 
 // 向对方发送信息，并且期待 ACK
 //
@@ -183,10 +145,6 @@ func (c *Client) process(recv []byte) {
 }
 
 func (c *Client) Start() {
-	if c.status != CLIENT_ESTABLISHED {
-		panic("invalid client status")
-	}
-
 	recvBuf := make([]byte, MAX_TRANSMIT_SIZE)
 	var n int
 	var err error
