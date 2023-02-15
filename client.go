@@ -47,19 +47,13 @@ func NewClient(serverAddr net.UDPAddr, timeout time.Duration) (*Client, error) {
 	ret := &Client{
 		server:     serverAddr,
 		router:     router,
-		session:    "",
 		connection: connection,
 		status:     CLIENT_CREATED,
 		timeout:    timeout,
 		sequence:   0,
 	}
 
-	err = ret.hello()
-	if err != nil {
-		return nil, err
-	}
-
-	return ret, nil
+	return ret, ret.hello()
 }
 
 func (c *Client) getSequence() int {
@@ -74,14 +68,9 @@ func (c *Client) hello() error {
 	}
 
 	start := time.Now().UnixMicro()
-
 	var response *PrtPackage
 	if response, err = c.Promise("prt-hello", ""); err != nil {
 		return err
-	}
-
-	if response.Identifier != "prt-hello" {
-		return ErrServerProcotol
 	}
 
 	c.rtt = time.Now().UnixMicro() - start
