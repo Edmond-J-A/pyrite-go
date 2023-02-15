@@ -10,6 +10,8 @@
 
 ### 用法示例
 
+**客户端**
+
 ```go
 addr := net.UDPAddr{
 	Port: 648,
@@ -18,7 +20,7 @@ addr := net.UDPAddr{
 
 // 创建一个客户端
 // 第一个参数为服务器地址，第二个参数为超时时间
-// 创建时会尝试连接服务器。若连接成功则返回客户端指针和 nil 错误
+// 创建时会尝试创建一个 UDP 客户端
 client, err := pyrite.NewClient(addr, 10*time.Second)
 if err != nil {
 	// 端口占用等因素可能导致 Client 创建失败
@@ -32,14 +34,14 @@ client.AddRouter("process-data", func(req string) string {
 })
 
 // client.Start 会启动客户端的主循环
-// 此主循环会接受所有来自服务器的数据，并识别其 identifier
-// 依据此前 client.AddRouter 的逻辑，自动分配处理函数
-// 此函数收到自服务器发来的 ACK 报文时，会将其分发给特定的 Promise，并解除其阻塞
+// 此主循环会接受所有来自服务器的数据包，并识别其 identifier
+// 随后，依据此前 client.AddRouter 的逻辑，自动分配处理函数
+// 收到的数据包被识别为 ACK 包时，主循环会将其送至特定的 Promise，并解除其阻塞
 go client.Start()
 
 // 使用 client.Promise 可以向服务器发送一条消息，并让服务器用特定的函数处理这条消息
 // client.Promise 会阻塞当前线程，直到服务器响应此 Promise，或者超时
-// 服务器会对 client.Promise 发送的数据进行回复，回复的内容为第一个返回值
+// 服务器会对 client.Promise 发送的数据进行回复，回复的内容为 代码中的 resp
 resp, err := client.Promise("please-check-this", "hi! this is client!")
 if err != nil {
 	// 若网络环境等因素导致丢包，client.Promise 在超时时间后会将错误信息返回
