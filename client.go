@@ -20,11 +20,8 @@ type Client struct {
 }
 
 var (
-	ErrClientIllegalOperation  = errors.New("illegal operation")
-	ErrClientUDPBindingFailed  = errors.New("udp binding failed")
-	ErrContentOverflowed       = errors.New("content overflowed")
-	ErrServerProcotol          = errors.New("invalid server protocol")
-	ErrClientTellServerTimeout = errors.New("client tell server timeout")
+	ErrClientUDPBindingFailed = errors.New("udp binding failed")
+	ErrServerProcotol         = errors.New("invalid server protocol")
 )
 
 func NewClient(serverAddr net.UDPAddr, timeout time.Duration) (*Client, error) {
@@ -91,14 +88,14 @@ func (c *Client) Promise(identifier, body string) (string, error) {
 	ok := <-ch
 	close(ch)
 	if !ok {
-		return "", ErrClientTellServerTimeout
+		return "", ErrTimeout
 	}
 
 	return response.Body, nil
 }
 
 // 向对方发送消息，但是不期待 ACK
-func (c *Client) Tell(identifier, body string) {
+func (c *Client) Tell(identifier, body string) error {
 	rBytes := PrtPackage{
 		Session:    c.session,
 		Identifier: identifier,
@@ -107,10 +104,11 @@ func (c *Client) Tell(identifier, body string) {
 	}.ToBytes()
 
 	if len(rBytes) > MAX_TRANSMIT_SIZE {
-		panic("package too long")
+		return ErrContentOverflowed
 	}
 
 	c.connection.Write(rBytes)
+	return nil
 }
 
 func (c *Client) processAck(response *PrtPackage) {
@@ -125,7 +123,7 @@ func (c *Client) processAck(response *PrtPackage) {
 }
 
 func (c *Client) process(recv []byte) {
-	req, err := CastToPrtpackage(recv)
+	req, err := CastToPrtPackage(recv)
 	if err != nil {
 		return
 	}

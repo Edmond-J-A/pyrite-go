@@ -31,7 +31,6 @@ type Server struct {
 
 var (
 	ErrServerUDPStartingFailed = errors.New("fail to start udp server")
-	ErrServerTellClientTimeout = errors.New("server tell client timeout")
 )
 
 //func processAlive(pkage PrtPackage)*PrtPackage
@@ -74,7 +73,7 @@ func (s *Server) getSequence(session string) int {
 	return s.cdata[session].Sequence - 1
 }
 
-func (s *Server) Tell(session string, identifier, body string) {
+func (s *Server) Tell(session string, identifier, body string) error {
 	rBytes := PrtPackage{
 		Session:    session,
 		Identifier: identifier,
@@ -82,10 +81,11 @@ func (s *Server) Tell(session string, identifier, body string) {
 		Body:       body,
 	}.ToBytes()
 	if len(rBytes) > MAX_TRANSMIT_SIZE {
-		panic("package too long")
+		return ErrContentOverflowed
 	}
 
 	s.listener.Write(rBytes)
+	return nil
 }
 
 // 向对方发送信息，并且期待 ACK
@@ -117,7 +117,7 @@ func (s *Server) Promise(session string, identifier, body string) (string, error
 	}(&err, ch)
 	ok := <-ch
 	if !ok {
-		return "", ErrServerTellClientTimeout
+		return "", ErrTimeout
 	}
 	return response.Body, nil
 }
@@ -135,7 +135,7 @@ func (s *Server) processAck(response *PrtPackage) {
 }
 
 func (s *Server) process(addr *net.UDPAddr, recv []byte) {
-	prtPack, err := CastToPrtpackage(recv)
+	prtPack, err := CastToPrtPackage(recv)
 	if err != nil {
 		return
 	}
