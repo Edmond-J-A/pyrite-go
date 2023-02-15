@@ -9,7 +9,7 @@ import (
 
 type Client struct {
 	server     net.UDPAddr
-	router     map[string]func(PrtPackage) *PrtPackage
+	router     map[string]func(string) string
 	connection *net.UDPConn
 
 	session string
@@ -36,7 +36,7 @@ func NewClient(serverAddr net.UDPAddr, timeout time.Duration) (*Client, error) {
 
 	return &Client{
 		server:     serverAddr,
-		router:     make(map[string]func(PrtPackage) *PrtPackage),
+		router:     make(map[string]func(string) string),
 		connection: connection,
 		timeout:    timeout,
 		sequence:   0,
@@ -50,7 +50,7 @@ func (c *Client) getSequence() int {
 
 func (c *Client) Refresh() error
 
-func (c *Client) AddRouter(identifier string, controller func(PrtPackage) *PrtPackage) bool {
+func (c *Client) AddRouter(identifier string, controller func(string) string) bool {
 	if strings.Index(identifier, "prt-") == 0 {
 		return false
 	}
@@ -119,29 +119,32 @@ func (c *Client) processAck(response *PrtPackage) {
 }
 
 func (c *Client) process(recv []byte) {
-	prt, err := CastToPrtpackage(recv)
+	req, err := CastToPrtpackage(recv)
 	if err != nil {
 		return
 	}
 
-	if prt.Identifier == "prt-ack" {
-		c.processAck(prt)
+	if req.Identifier == "prt-ack" {
+		c.processAck(req)
 		return
 	}
 
-	f, ok := c.router[prt.Identifier]
+	f, ok := c.router[req.Identifier]
 	if !ok {
 		return
 	}
 
-	resp := f(*prt)
-	if resp == nil {
+	resp := f(req.Body)
+	if resp == "" {
 		return
 	}
 
-	resp.Session = c.session
-	resp.Identifier = "prt-ack"
-	c.connection.Write(resp.ToBytes())
+	c.connection.Write(PrtPackage{
+		Session:    c.session,
+		Identifier: "prt-ack",
+		sequence:   req.sequence,
+		Body:       resp,
+	}.ToBytes())
 }
 
 func (c *Client) Start() {
