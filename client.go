@@ -20,10 +20,8 @@ type Client struct {
 }
 
 var (
-	ErrClientIllegalOperation  = errors.New("illegal operation")
-	ErrClientUDPBindingFailed  = errors.New("udp binding failed")
-	ErrServerProcotol          = errors.New("invalid server protocol")
-	ErrClientTellServerTimeout = errors.New("client tell server timeout")
+	ErrClientUDPBindingFailed = errors.New("udp binding failed")
+	ErrServerProcotol         = errors.New("invalid server protocol")
 )
 
 func NewClient(serverAddr net.UDPAddr, timeout time.Duration) (*Client, error) {
@@ -90,7 +88,7 @@ func (c *Client) Promise(identifier, body string) (string, error) {
 	ok := <-ch
 	close(ch)
 	if !ok {
-		return "", ErrClientTellServerTimeout
+		return "", ErrTimeout
 	}
 
 	return response.Body, nil

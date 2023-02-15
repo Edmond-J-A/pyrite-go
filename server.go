@@ -31,7 +31,6 @@ type Server struct {
 
 var (
 	ErrServerUDPStartingFailed = errors.New("fail to start udp server")
-	ErrServerTellClientTimeout = errors.New("server tell client timeout")
 )
 
 //func processAlive(pkage PrtPackage)*PrtPackage
@@ -118,7 +117,7 @@ func (s *Server) Promise(session string, identifier, body string) (string, error
 	}(&err, ch)
 	ok := <-ch
 	if !ok {
-		return "", ErrServerTellClientTimeout
+		return "", ErrTimeout
 	}
 	return response.Body, nil
 }
