@@ -10,7 +10,12 @@ import (
 	"time"
 )
 
-type ClientObject struct {
+type ClientData struct {
+	Ip           *net.UDPAddr
+	LastAccept   int64
+	Sequence     int
+	SequenceBuff map[int]chan *PrtPackage
+	Timeout      time.Duration
 }
 
 type Server struct {
@@ -21,14 +26,7 @@ type Server struct {
 	occupied    map[string]bool
 	router      map[string]func(PrtPackage) *PrtPackage
 
-	ip           map[string]*net.UDPAddr
-	session      map[string]interface{}
-	rtt          map[string]int64
-	lastAccept   map[string]int64
-	status       map[string]int
-	sequence     map[string]int
-	sequenceBuff map[string](map[int]chan *PrtPackage)
-	timeout      map[string]time.Duration
+	cdata map[string]*ClientData
 }
 
 var (
@@ -36,13 +34,16 @@ var (
 	ErrerverTellSClientTimeout = errors.New("server tell client timeout")
 )
 
+//func processAlive(pkage PrtPackage)*PrtPackage
+
 func NewServer(port int, maxTime int64) (*Server, error) {
 
 	var server Server
 	server.port = port
 	server.router = make(map[string]func(PrtPackage) *PrtPackage)
-
+	server.cdata = make(map[string]*ClientData)
 	server.maxLifeTime = maxTime
+	//server.router["prt-alive"] = processAlive
 	return &server, nil
 }
 
@@ -53,14 +54,6 @@ func (s *Server) AddRouter(identifier string, controller func(PrtPackage) *PrtPa
 
 	s.router[identifier] = controller
 	return true
-}
-
-func (s *Server) SetSession(session string, data interface{}) {
-	s.session[session] = data
-}
-
-func (s *Server) DelSession(session string) {
-	delete(s.session, session)
 }
 
 func (s *Server) GenerateSession() string {
@@ -81,11 +74,11 @@ func (s *Server) GenerateSession() string {
 }
 
 func (s *Server) getSequence(session string) int {
-	s.sequence[session] += 1
-	return s.sequence[session] - 1
+	s.cdata[session].Sequence += 1
+	return s.cdata[session].Sequence - 1
 }
 
-func (s *Server) Tell(session string, identifier, body string) (*PrtPackage, error) {
+func (s *Server) Promise(session string, identifier, body string) (*PrtPackage, error) {
 	var response *PrtPackage
 	var err error
 	req := PrtPackage{
@@ -100,13 +93,13 @@ func (s *Server) Tell(session string, identifier, body string) (*PrtPackage, err
 		return nil, ErrContentOverflowed
 	}
 
-	s.listener.WriteToUDP(reqBytes, s.ip[session])
-	s.sequenceBuff[session][s.sequence[session]] = make(chan *PrtPackage)
+	s.listener.WriteToUDP(reqBytes, s.cdata[session].Ip)
+	s.cdata[session].SequenceBuff[s.cdata[session].Sequence] = make(chan *PrtPackage)
 	ch := make(chan bool)
-	go Timer(s.timeout[session], ch, false)
+	go Timer(s.cdata[session].Timeout, ch, false)
 	go func(err *error, ch chan bool) {
 		defer func() { recover() }()
-		response = <-s.sequenceBuff[session][s.sequence[session]]
+		response = <-s.cdata[session].SequenceBuff[s.cdata[session].Sequence]
 		ch <- true
 	}(&err, ch)
 	ok := <-ch
@@ -117,71 +110,39 @@ func (s *Server) Tell(session string, identifier, body string) (*PrtPackage, err
 }
 
 func (s *Server) processHello(addr *net.UDPAddr, requst *PrtPackage) error {
-	newSession := s.GenerateSession()
-	s.status[newSession] = CLIENT_CREATED
-	start := time.Now().UnixMicro()
-
-	var response *PrtPackage
-	var err error
-	s.ip[newSession] = addr
-	if response, err = s.Tell(newSession, "prt-hello", string(s.maxLifeTime)); err != nil {
-		delete(s.ip, newSession)
-		return err
-	}
-
-	if response.Identifier != "prt-established" {
-		return ErrServerProcotol
-	}
-
-	s.rtt[newSession] = time.Now().UnixMicro() - start
-	s.status[newSession] = CLIENT_ESTABLISHED
 	return nil
 }
 
 func (s *Server) processAck(response *PrtPackage) {
 	session := response.Session
-	ch, ok := s.sequenceBuff[session][response.sequence]
+	ch, ok := s.cdata[session].SequenceBuff[response.sequence]
 	if !ok {
 		return
 	}
 
 	ch <- response
 	close(ch)
-	delete(s.sequenceBuff[session], response.sequence)
+	delete(s.cdata[session].SequenceBuff, response.sequence)
 }
 
 func (s *Server) process(addr *net.UDPAddr, recv []byte) {
 
-	request, err := CastToPrtpackage(recv)
+	prtPack, err := CastToPrtpackage(recv)
 	if err != nil {
 		return
 	}
 
-	if request.Identifier == "prt-hello" {
-		s.processHello(addr, request)
+	if prtPack.Identifier == "prt-ack" {
+		s.processAck(prtPack)
 		return
 	}
 
-	if s.status[request.Session] != CLIENT_ESTABLISHED {
-		panic("invalid client status")
-	}
-
-	response, err := CastToPrtpackage(recv)
-	if err != nil {
-		return
-	}
-
-	if response.Identifier == "prt-ack" {
-		s.processAck(response)
-		return
-	}
-
-	f, ok := s.router[request.Identifier]
+	f, ok := s.router[prtPack.Identifier]
 	if !ok {
 		return
 	}
 
-	resp := f(*request)
+	resp := f(*prtPack)
 	if resp == nil {
 		return
 	}
@@ -211,17 +172,9 @@ func (s *Server) Start() error {
 
 func (s *Server) GC() {
 	nowTime := time.Now().UnixMicro()
-	for k, v := range s.lastAccept {
-		if nowTime-v >= s.maxLifeTime {
-			delete(s.lastAccept, k)
-			delete(s.rtt, k)
-			delete(s.session, k)
-			delete(s.status, k)
-			delete(s.ip, k)
-			delete(s.sequence, k)
-			delete(s.timeout, k)
-			delete(s.sequenceBuff, k)
-			delete(s.occupied, k)
+	for k, v := range s.cdata {
+		if nowTime-v.LastAccept >= s.maxLifeTime {
+			delete(s.cdata, k)
 		}
 	}
 }
