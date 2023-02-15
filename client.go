@@ -24,8 +24,8 @@ type Client struct {
 	rtt         int64
 	timeout     time.Duration
 
-	sequence     int                      // 下一个 sequence
-	sequenceBuff map[int]chan *PrtPackage // 暂存已发但未确认的包
+	sequence      int                      // 下一个 sequence
+	promiseBuffer map[int]chan *PrtPackage // 暂存已发但未确认的包
 }
 
 var (
@@ -117,14 +117,14 @@ func (c *Client) Promise(identifier, body string) (*PrtPackage, error) {
 	}
 
 	c.connection.Write(req.ToBytes())
-	c.sequenceBuff[req.sequence] = make(chan *PrtPackage)
+	c.promiseBuffer[req.sequence] = make(chan *PrtPackage)
 
 	ch := make(chan bool)
 	go Timer(c.timeout, ch, false)
 
 	go func(err *error, ch chan bool) {
 		defer func() { recover() }()
-		response = <-c.sequenceBuff[req.sequence]
+		response = <-c.promiseBuffer[req.sequence]
 		ch <- true
 	}(&err, ch)
 
@@ -148,14 +148,14 @@ func (c *Client) Tell(identifier, body string) {
 }
 
 func (c *Client) processAck(response *PrtPackage) {
-	ch, ok := c.sequenceBuff[response.sequence]
+	ch, ok := c.promiseBuffer[response.sequence]
 	if !ok {
 		return
 	}
 
 	ch <- response
 	close(ch)
-	delete(c.sequenceBuff, response.sequence)
+	delete(c.promiseBuffer, response.sequence)
 }
 
 func (c *Client) process(recv []byte) {
