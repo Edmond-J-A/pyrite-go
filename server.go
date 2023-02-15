@@ -1,13 +1,13 @@
 package pyritego
 
 import (
-	"crypto/rand"
 	"errors"
 	"log"
-	"math/big"
 	"net"
 	"strings"
 	"time"
+
+	"github.com/mo-crystal/pyrite-go/utils"
 )
 
 type ClientData struct {
@@ -57,20 +57,15 @@ func (s *Server) AddRouter(identifier string, controller func(PrtPackage) *PrtPa
 }
 
 func (s *Server) GenerateSession() string {
-	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
-	ret := make([]rune, s.sessionlen)
-	var randInt *big.Int
+	var ret string
 	for {
-		for i := range ret {
-			randInt, _ = rand.Int(rand.Reader, big.NewInt(26+26+10))
-			ret[i] = letters[randInt.Int64()]
-		}
-		if _, ok := s.occupied[string(ret)]; !ok { //TODO:进位算法替换
+		ret = utils.RandomString(s.sessionlen)
+		if _, ok := s.occupied[string(ret)]; !ok {
 			s.occupied[string(ret)] = true
 			break
 		}
 	}
-	return string(ret)
+	return ret
 }
 
 func (s *Server) getSequence(session string) int {
@@ -78,7 +73,7 @@ func (s *Server) getSequence(session string) int {
 	return s.cdata[session].Sequence - 1
 }
 
-func (s *Server) Promise(session string, identifier, body string) (*PrtPackage, error) {
+func (s *Server) Promise(session string, identifier, body string) (string, error) {
 	var response *PrtPackage
 	var err error
 	req := PrtPackage{
@@ -90,7 +85,7 @@ func (s *Server) Promise(session string, identifier, body string) (*PrtPackage, 
 
 	reqBytes := req.ToBytes()
 	if len(reqBytes) > MAX_TRANSMIT_SIZE {
-		return nil, ErrContentOverflowed
+		return "", ErrContentOverflowed
 	}
 
 	s.listener.WriteToUDP(reqBytes, s.cdata[session].Ip)
@@ -104,9 +99,9 @@ func (s *Server) Promise(session string, identifier, body string) (*PrtPackage, 
 	}(&err, ch)
 	ok := <-ch
 	if !ok {
-		return nil, ErrerverTellSClientTimeout
+		return "", ErrerverTellSClientTimeout
 	}
-	return response, nil
+	return response.Body, nil
 }
 
 func (s *Server) processHello(addr *net.UDPAddr, requst *PrtPackage) error {
@@ -126,10 +121,14 @@ func (s *Server) processAck(response *PrtPackage) {
 }
 
 func (s *Server) process(addr *net.UDPAddr, recv []byte) {
-
 	prtPack, err := CastToPrtpackage(recv)
 	if err != nil {
 		return
+	}
+
+	if prtPack.Session == "" {
+		newSession := s.GenerateSession()
+
 	}
 
 	if prtPack.Identifier == "prt-ack" {
