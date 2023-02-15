@@ -24,8 +24,8 @@ type Client struct {
 	rtt         int64
 	timeout     time.Duration
 
-	sequence     int                      // 下一个 sequence
-	sequenceBuff map[int]chan *PrtPackage // 暂存已发但未确认的包
+	sequence      int                      // 下一个 sequence
+	promiseBuffer map[int]chan *PrtPackage // 暂存已发但未确认的包
 }
 
 var (
@@ -47,19 +47,13 @@ func NewClient(serverAddr net.UDPAddr, timeout time.Duration) (*Client, error) {
 	ret := &Client{
 		server:     serverAddr,
 		router:     router,
-		session:    "",
 		connection: connection,
 		status:     CLIENT_CREATED,
 		timeout:    timeout,
 		sequence:   0,
 	}
 
-	err = ret.hello()
-	if err != nil {
-		return nil, err
-	}
-
-	return ret, nil
+	return ret, ret.hello()
 }
 
 func (c *Client) getSequence() int {
@@ -74,14 +68,9 @@ func (c *Client) hello() error {
 	}
 
 	start := time.Now().UnixMicro()
-
 	var response *PrtPackage
-	if response, err = c.Tell("prt-hello", ""); err != nil {
+	if response, err = c.Promise("prt-hello", ""); err != nil {
 		return err
-	}
-
-	if response.Identifier != "prt-hello" {
-		return ErrServerProcotol
 	}
 
 	c.rtt = time.Now().UnixMicro() - start
@@ -92,7 +81,7 @@ func (c *Client) hello() error {
 	}
 
 	c.status = CLIENT_ESTABLISHED
-	c.Write("prt-established", "")
+	c.Tell("prt-established", "")
 	return nil
 }
 
@@ -112,7 +101,7 @@ func (c *Client) DelSession()
 // 向对方发送信息，并且期待 ACK
 //
 // 此函数会阻塞线程
-func (c *Client) Tell(identifier, body string) (*PrtPackage, error) {
+func (c *Client) Promise(identifier, body string) (*PrtPackage, error) {
 	var response *PrtPackage
 	var err error
 	req := PrtPackage{
@@ -128,14 +117,14 @@ func (c *Client) Tell(identifier, body string) (*PrtPackage, error) {
 	}
 
 	c.connection.Write(req.ToBytes())
-	c.sequenceBuff[req.sequence] = make(chan *PrtPackage)
+	c.promiseBuffer[req.sequence] = make(chan *PrtPackage)
 
 	ch := make(chan bool)
 	go Timer(c.timeout, ch, false)
 
 	go func(err *error, ch chan bool) {
 		defer func() { recover() }()
-		response = <-c.sequenceBuff[req.sequence]
+		response = <-c.promiseBuffer[req.sequence]
 		ch <- true
 	}(&err, ch)
 
@@ -149,7 +138,7 @@ func (c *Client) Tell(identifier, body string) (*PrtPackage, error) {
 }
 
 // 向对方发送消息，但是不期待 ACK
-func (c *Client) Write(identifier, body string) {
+func (c *Client) Tell(identifier, body string) {
 	c.connection.Write(PrtPackage{
 		Session:    c.session,
 		Identifier: identifier,
@@ -159,38 +148,33 @@ func (c *Client) Write(identifier, body string) {
 }
 
 func (c *Client) processAck(response *PrtPackage) {
-	ch, ok := c.sequenceBuff[response.sequence]
+	ch, ok := c.promiseBuffer[response.sequence]
 	if !ok {
 		return
 	}
 
 	ch <- response
 	close(ch)
-	delete(c.sequenceBuff, response.sequence)
+	delete(c.promiseBuffer, response.sequence)
 }
 
 func (c *Client) process(recv []byte) {
-	response, err := CastToPrtpackage(recv)
+	prt, err := CastToPrtpackage(recv)
 	if err != nil {
 		return
 	}
 
-	if response.Identifier == "prt-ack" {
-		c.processAck(response)
+	if prt.Identifier == "prt-ack" {
+		c.processAck(prt)
 		return
 	}
 
-	request, err := CastToPrtpackage(recv)
-	if err != nil {
-		return
-	}
-
-	f, ok := c.router[request.Identifier]
+	f, ok := c.router[prt.Identifier]
 	if !ok {
 		return
 	}
 
-	resp := f(*request)
+	resp := f(*prt)
 	if resp == nil {
 		return
 	}
