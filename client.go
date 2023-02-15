@@ -140,6 +140,7 @@ func (c *Client) process(recv []byte) {
 		return
 	}
 
+	resp.Session = c.session
 	resp.Identifier = "prt-ack"
 	c.connection.Write(resp.ToBytes())
 }
