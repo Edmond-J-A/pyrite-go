@@ -15,7 +15,6 @@ type ClientData struct {
 	LastAccept   int64
 	Sequence     int
 	SequenceBuff map[int]chan *PrtPackage
-	Timeout      time.Duration
 }
 
 type Server struct {
@@ -25,6 +24,7 @@ type Server struct {
 	maxLifeTime int64
 	occupied    map[string]bool
 	router      map[string]func(PrtPackage) *PrtPackage
+	timeout     time.Duration
 
 	cdata map[string]*ClientData
 }
@@ -36,13 +36,14 @@ var (
 
 //func processAlive(pkage PrtPackage)*PrtPackage
 
-func NewServer(port int, maxTime int64) (*Server, error) {
+func NewServer(port int, maxTime int64, timeout time.Duration) (*Server, error) {
 
 	var server Server
 	server.port = port
 	server.router = make(map[string]func(PrtPackage) *PrtPackage)
 	server.cdata = make(map[string]*ClientData)
 	server.maxLifeTime = maxTime
+	server.timeout = timeout
 	//server.router["prt-alive"] = processAlive
 	return &server, nil
 }
@@ -73,6 +74,8 @@ func (s *Server) getSequence(session string) int {
 	return s.cdata[session].Sequence - 1
 }
 
+func (s *Server) Tell(session string, identifier, body string) (string, error)
+
 func (s *Server) Promise(session string, identifier, body string) (string, error) {
 	var response *PrtPackage
 	var err error
@@ -91,7 +94,7 @@ func (s *Server) Promise(session string, identifier, body string) (string, error
 	s.listener.WriteToUDP(reqBytes, s.cdata[session].Ip)
 	s.cdata[session].SequenceBuff[s.cdata[session].Sequence] = make(chan *PrtPackage)
 	ch := make(chan bool)
-	go Timer(s.cdata[session].Timeout, ch, false)
+	go Timer(s.timeout, ch, false)
 	go func(err *error, ch chan bool) {
 		defer func() { recover() }()
 		response = <-s.cdata[session].SequenceBuff[s.cdata[session].Sequence]
@@ -102,10 +105,6 @@ func (s *Server) Promise(session string, identifier, body string) (string, error
 		return "", ErrerverTellSClientTimeout
 	}
 	return response.Body, nil
-}
-
-func (s *Server) processHello(addr *net.UDPAddr, requst *PrtPackage) error {
-	return nil
 }
 
 func (s *Server) processAck(response *PrtPackage) {
@@ -125,10 +124,16 @@ func (s *Server) process(addr *net.UDPAddr, recv []byte) {
 	if err != nil {
 		return
 	}
-
+	now := time.Now().UnixMicro()
+	nowSession := prtPack.Session
 	if prtPack.Session == "" {
-		newSession := s.GenerateSession()
-
+		nowSession = s.GenerateSession()
+		s.cdata[nowSession] = &ClientData{
+			Ip:           addr,
+			LastAccept:   now,
+			Sequence:     0,
+			SequenceBuff: make(map[int]chan *PrtPackage),
+		}
 	}
 
 	if prtPack.Identifier == "prt-ack" {
@@ -146,6 +151,7 @@ func (s *Server) process(addr *net.UDPAddr, recv []byte) {
 		return
 	}
 
+	resp.Session = nowSession
 	resp.Identifier = "prt-ack"
 	s.listener.Write(resp.ToBytes())
 }
