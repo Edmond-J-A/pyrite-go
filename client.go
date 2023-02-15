@@ -76,7 +76,7 @@ func (c *Client) hello() error {
 	start := time.Now().UnixMicro()
 
 	var response *PrtPackage
-	if response, err = c.Tell("prt-hello", ""); err != nil {
+	if response, err = c.Promise("prt-hello", ""); err != nil {
 		return err
 	}
 
@@ -92,7 +92,7 @@ func (c *Client) hello() error {
 	}
 
 	c.status = CLIENT_ESTABLISHED
-	c.Write("prt-established", "")
+	c.Tell("prt-established", "")
 	return nil
 }
 
@@ -112,7 +112,7 @@ func (c *Client) DelSession()
 // 向对方发送信息，并且期待 ACK
 //
 // 此函数会阻塞线程
-func (c *Client) Tell(identifier, body string) (*PrtPackage, error) {
+func (c *Client) Promise(identifier, body string) (*PrtPackage, error) {
 	var response *PrtPackage
 	var err error
 	req := PrtPackage{
@@ -149,7 +149,7 @@ func (c *Client) Tell(identifier, body string) (*PrtPackage, error) {
 }
 
 // 向对方发送消息，但是不期待 ACK
-func (c *Client) Write(identifier, body string) {
+func (c *Client) Tell(identifier, body string) {
 	c.connection.Write(PrtPackage{
 		Session:    c.session,
 		Identifier: identifier,
