@@ -15,7 +15,7 @@ const (
 
 type Client struct {
 	server     net.UDPAddr
-	router     map[string]func(Request) *Response
+	router     map[string]func(PrtPackage) *PrtPackage
 	connection *net.UDPConn
 	status     int
 
@@ -24,8 +24,8 @@ type Client struct {
 	rtt         int64
 	timeout     time.Duration
 
-	sequence     int                    // 下一个 sequence
-	sequenceBuff map[int]chan *Response // 暂存已发但未确认的包
+	sequence     int                      // 下一个 sequence
+	sequenceBuff map[int]chan *PrtPackage // 暂存已发但未确认的包
 }
 
 var (
@@ -43,7 +43,7 @@ func NewClient(serverAddr net.UDPAddr, timeout time.Duration) (*Client, error) {
 		return nil, ErrClientUDPBindingFailed
 	}
 
-	router := make(map[string]func(Request) *Response)
+	router := make(map[string]func(PrtPackage) *PrtPackage)
 	ret := &Client{
 		server:     serverAddr,
 		router:     router,
@@ -75,7 +75,7 @@ func (c *Client) hello() error {
 
 	start := time.Now().UnixMicro()
 
-	var response *Response
+	var response *PrtPackage
 	if response, err = c.Tell("prt-hello", ""); err != nil {
 		return err
 	}
@@ -98,7 +98,7 @@ func (c *Client) hello() error {
 
 func (c *Client) Refresh() error
 
-func (c *Client) AddRouter(identifier string, controller func(Request) *Response) bool {
+func (c *Client) AddRouter(identifier string, controller func(PrtPackage) *PrtPackage) bool {
 	if strings.Index(identifier, "prt-") == 0 {
 		return false
 	}
@@ -112,10 +112,10 @@ func (c *Client) DelSession()
 // 向对方发送信息，并且期待 ACK
 //
 // 此函数会阻塞线程
-func (c *Client) Tell(identifier, body string) (*Response, error) {
-	var response *Response
+func (c *Client) Tell(identifier, body string) (*PrtPackage, error) {
+	var response *PrtPackage
 	var err error
-	req := Request{
+	req := PrtPackage{
 		Session:    c.session,
 		Identifier: identifier,
 		sequence:   c.getSequence(),
@@ -128,7 +128,7 @@ func (c *Client) Tell(identifier, body string) (*Response, error) {
 	}
 
 	c.connection.Write(req.ToBytes())
-	c.sequenceBuff[req.sequence] = make(chan *Response)
+	c.sequenceBuff[req.sequence] = make(chan *PrtPackage)
 
 	ch := make(chan bool)
 	go Timer(c.timeout, ch, false)
@@ -150,7 +150,7 @@ func (c *Client) Tell(identifier, body string) (*Response, error) {
 
 // 向对方发送消息，但是不期待 ACK
 func (c *Client) Write(identifier, body string) {
-	c.connection.Write(Request{
+	c.connection.Write(PrtPackage{
 		Session:    c.session,
 		Identifier: identifier,
 		sequence:   -1,
@@ -158,7 +158,7 @@ func (c *Client) Write(identifier, body string) {
 	}.ToBytes())
 }
 
-func (c *Client) processAck(response *Response) {
+func (c *Client) processAck(response *PrtPackage) {
 	ch, ok := c.sequenceBuff[response.sequence]
 	if !ok {
 		return
@@ -170,7 +170,7 @@ func (c *Client) processAck(response *Response) {
 }
 
 func (c *Client) process(recv []byte) {
-	response, err := CastToResponse(recv)
+	response, err := CastToPrtpackage(recv)
 	if err != nil {
 		return
 	}
@@ -180,7 +180,7 @@ func (c *Client) process(recv []byte) {
 		return
 	}
 
-	request, err := CastToRequest(recv)
+	request, err := CastToPrtpackage(recv)
 	if err != nil {
 		return
 	}

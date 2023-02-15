@@ -14,19 +14,20 @@ type ClientObject struct {
 }
 
 type Server struct {
-	listener     *net.UDPConn
-	port         int
-	sessionlen   int
-	occupied     map[string]bool
-	router       map[string]func(Request) *Response
+	listener    *net.UDPConn
+	port        int
+	sessionlen  int
+	maxLifeTime int64
+	occupied    map[string]bool
+	router      map[string]func(PrtPackage) *PrtPackage
+
 	ip           map[string]*net.UDPAddr
 	session      map[string]interface{}
 	rtt          map[string]int64
 	lastAccept   map[string]int64
 	status       map[string]int
-	maxLifeTime  int64
 	sequence     map[string]int
-	sequenceBuff map[string](map[int]chan *Response)
+	sequenceBuff map[string](map[int]chan *PrtPackage)
 	timeout      map[string]time.Duration
 }
 
@@ -39,13 +40,13 @@ func NewServer(port int, maxTime int64) (*Server, error) {
 
 	var server Server
 	server.port = port
-	server.router = make(map[string]func(Request) *Response)
+	server.router = make(map[string]func(PrtPackage) *PrtPackage)
 
 	server.maxLifeTime = maxTime
 	return &server, nil
 }
 
-func (s *Server) AddRouter(identifier string, controller func(Request) *Response) bool {
+func (s *Server) AddRouter(identifier string, controller func(PrtPackage) *PrtPackage) bool {
 	if strings.Index(identifier, "prt-") == 0 {
 		return false
 	}
@@ -84,10 +85,10 @@ func (s *Server) getSequence(session string) int {
 	return s.sequence[session] - 1
 }
 
-func (s *Server) Tell(session string, identifier, body string) (*Response, error) {
-	var response *Response
+func (s *Server) Tell(session string, identifier, body string) (*PrtPackage, error) {
+	var response *PrtPackage
 	var err error
-	req := Request{
+	req := PrtPackage{
 		Session:    session,
 		Identifier: identifier,
 		sequence:   s.getSequence(session),
@@ -100,7 +101,7 @@ func (s *Server) Tell(session string, identifier, body string) (*Response, error
 	}
 
 	s.listener.WriteToUDP(reqBytes, s.ip[session])
-	s.sequenceBuff[session][s.sequence[session]] = make(chan *Response)
+	s.sequenceBuff[session][s.sequence[session]] = make(chan *PrtPackage)
 	ch := make(chan bool)
 	go Timer(s.timeout[session], ch, false)
 	go func(err *error, ch chan bool) {
@@ -115,12 +116,12 @@ func (s *Server) Tell(session string, identifier, body string) (*Response, error
 	return response, nil
 }
 
-func (s *Server) processHello(addr *net.UDPAddr, requst *Request) error {
+func (s *Server) processHello(addr *net.UDPAddr, requst *PrtPackage) error {
 	newSession := s.GenerateSession()
 	s.status[newSession] = CLIENT_CREATED
 	start := time.Now().UnixMicro()
 
-	var response *Response
+	var response *PrtPackage
 	var err error
 	s.ip[newSession] = addr
 	if response, err = s.Tell(newSession, "prt-hello", string(s.maxLifeTime)); err != nil {
@@ -137,7 +138,7 @@ func (s *Server) processHello(addr *net.UDPAddr, requst *Request) error {
 	return nil
 }
 
-func (s *Server) processAck(response *Response) {
+func (s *Server) processAck(response *PrtPackage) {
 	session := response.Session
 	ch, ok := s.sequenceBuff[session][response.sequence]
 	if !ok {
@@ -151,7 +152,7 @@ func (s *Server) processAck(response *Response) {
 
 func (s *Server) process(addr *net.UDPAddr, recv []byte) {
 
-	request, err := CastToRequest(recv)
+	request, err := CastToPrtpackage(recv)
 	if err != nil {
 		return
 	}
@@ -165,7 +166,7 @@ func (s *Server) process(addr *net.UDPAddr, recv []byte) {
 		panic("invalid client status")
 	}
 
-	response, err := CastToResponse(recv)
+	response, err := CastToPrtpackage(recv)
 	if err != nil {
 		return
 	}

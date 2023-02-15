@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-type Response struct {
+type PrtPackage struct {
 	Session    string
 	Identifier string
 	sequence   int
@@ -18,7 +18,7 @@ var (
 	ErrInvalidResponse = errors.New("invalid response")
 )
 
-func CastToResponse(raw []byte) (*Response, error) {
+func CastToPrtpackage(raw []byte) (*PrtPackage, error) {
 	str := string(raw)
 	splits := strings.SplitN(str, "\n", 5)
 	if len(splits) < 5 {
@@ -30,7 +30,7 @@ func CastToResponse(raw []byte) (*Response, error) {
 		return nil, ErrInvalidResponse
 	}
 
-	return &Response{
+	return &PrtPackage{
 		Session:    splits[0],
 		Identifier: splits[1],
 		sequence:   sequence,
@@ -38,6 +38,6 @@ func CastToResponse(raw []byte) (*Response, error) {
 	}, nil
 }
 
-func (r Response) ToBytes() []byte {
+func (r PrtPackage) ToBytes() []byte {
 	return []byte(fmt.Sprintf("%s\n%s\n%d\n\n%s", r.Session, r.Identifier, r.sequence, r.Body))
 }
