@@ -63,7 +63,7 @@ func (c *Client) AddRouter(identifier string, controller func(PrtPackage) *PrtPa
 // 向对方发送信息，并且期待 ACK
 //
 // 此函数会阻塞线程
-func (c *Client) Promise(identifier, body string) (*PrtPackage, error) {
+func (c *Client) Promise(identifier, body string) (string, error) {
 	req := PrtPackage{
 		Session:    c.session,
 		Identifier: identifier,
@@ -73,7 +73,7 @@ func (c *Client) Promise(identifier, body string) (*PrtPackage, error) {
 
 	reqBytes := req.ToBytes()
 	if len(reqBytes) > MAX_TRANSMIT_SIZE {
-		return nil, ErrContentOverflowed
+		return "", ErrContentOverflowed
 	}
 
 	c.connection.Write(req.ToBytes())
@@ -92,10 +92,10 @@ func (c *Client) Promise(identifier, body string) (*PrtPackage, error) {
 	ok := <-ch
 	close(ch)
 	if !ok {
-		return nil, ErrClientTellServerTimeout
+		return "", ErrClientTellServerTimeout
 	}
 
-	return response, nil
+	return response.Body, nil
 }
 
 // 向对方发送消息，但是不期待 ACK
