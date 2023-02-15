@@ -19,9 +19,9 @@ type Client struct {
 	connection *net.UDPConn
 	status     int
 
-	Session     string
-	MaxLifeTime int64
-	RTT         int64
+	session     string
+	maxLifeTime int64
+	rtt         int64
 	timeout     time.Duration
 
 	sequence     int                    // 下一个 sequence
@@ -47,7 +47,7 @@ func NewClient(serverAddr net.UDPAddr, timeout time.Duration) (*Client, error) {
 	ret := &Client{
 		server:     serverAddr,
 		router:     router,
-		Session:    "",
+		session:    "",
 		connection: connection,
 		status:     CLIENT_CREATED,
 		timeout:    timeout,
@@ -84,9 +84,9 @@ func (c *Client) hello() error {
 		return ErrServerProcotol
 	}
 
-	c.RTT = time.Now().UnixMicro() - start
-	c.Session = response.Session
-	c.MaxLifeTime, err = strconv.ParseInt(response.Body, 10, 64)
+	c.rtt = time.Now().UnixMicro() - start
+	c.session = response.Session
+	c.maxLifeTime, err = strconv.ParseInt(response.Body, 10, 64)
 	if err != nil {
 		return ErrServerProcotol
 	}
@@ -116,7 +116,7 @@ func (c *Client) Tell(identifier, body string) (*Response, error) {
 	var response *Response
 	var err error
 	req := Request{
-		Session:    c.Session,
+		Session:    c.session,
 		Identifier: identifier,
 		sequence:   c.getSequence(),
 		Body:       body,
@@ -151,7 +151,7 @@ func (c *Client) Tell(identifier, body string) (*Response, error) {
 // 向对方发送消息，但是不期待 ACK
 func (c *Client) Write(identifier, body string) {
 	c.connection.Write(Request{
-		Session:    c.Session,
+		Session:    c.session,
 		Identifier: identifier,
 		sequence:   -1,
 		Body:       body,
