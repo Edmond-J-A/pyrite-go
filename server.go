@@ -135,7 +135,7 @@ func (s *Server) processAck(response *PrtPackage) {
 }
 
 func (s *Server) process(addr *net.UDPAddr, recv []byte) {
-	prtPack, err := CastToPrtpackage(recv)
+	prtPack, err := CastToPrtPackage(recv)
 	if err != nil {
 		return
 	}

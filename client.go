@@ -123,7 +123,7 @@ func (c *Client) processAck(response *PrtPackage) {
 }
 
 func (c *Client) process(recv []byte) {
-	req, err := CastToPrtpackage(recv)
+	req, err := CastToPrtPackage(recv)
 	if err != nil {
 		return
 	}

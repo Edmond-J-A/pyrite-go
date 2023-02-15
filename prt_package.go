@@ -18,7 +18,7 @@ var (
 	ErrInvalidResponse = errors.New("invalid response")
 )
 
-func CastToPrtpackage(raw []byte) (*PrtPackage, error) {
+func CastToPrtPackage(raw []byte) (*PrtPackage, error) {
 	str := string(raw)
 	splits := strings.SplitN(str, "\n", 5)
 	if len(splits) < 5 {
