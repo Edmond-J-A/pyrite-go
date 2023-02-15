@@ -75,12 +75,17 @@ func (s *Server) getSequence(session string) int {
 }
 
 func (s *Server) Tell(session string, identifier, body string) {
-	s.listener.Write(PrtPackage{
+	rBytes := PrtPackage{
 		Session:    session,
 		Identifier: identifier,
 		sequence:   -1,
 		Body:       body,
-	}.ToBytes())
+	}.ToBytes()
+	if len(rBytes) > MAX_TRANSMIT_SIZE {
+		panic("package too long")
+	}
+
+	s.listener.Write(rBytes)
 }
 
 // 向对方发送信息，并且期待 ACK

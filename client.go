@@ -99,12 +99,18 @@ func (c *Client) Promise(identifier, body string) (string, error) {
 
 // 向对方发送消息，但是不期待 ACK
 func (c *Client) Tell(identifier, body string) {
-	c.connection.Write(PrtPackage{
+	rBytes := PrtPackage{
 		Session:    c.session,
 		Identifier: identifier,
 		sequence:   -1,
 		Body:       body,
-	}.ToBytes())
+	}.ToBytes()
+
+	if len(rBytes) > MAX_TRANSMIT_SIZE {
+		panic("package too long")
+	}
+
+	c.connection.Write(rBytes)
 }
 
 func (c *Client) processAck(response *PrtPackage) {
