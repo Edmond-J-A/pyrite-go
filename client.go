@@ -170,27 +170,22 @@ func (c *Client) processAck(response *PrtPackage) {
 }
 
 func (c *Client) process(recv []byte) {
-	response, err := CastToPrtpackage(recv)
+	prt, err := CastToPrtpackage(recv)
 	if err != nil {
 		return
 	}
 
-	if response.Identifier == "prt-ack" {
-		c.processAck(response)
+	if prt.Identifier == "prt-ack" {
+		c.processAck(prt)
 		return
 	}
 
-	request, err := CastToPrtpackage(recv)
-	if err != nil {
-		return
-	}
-
-	f, ok := c.router[request.Identifier]
+	f, ok := c.router[prt.Identifier]
 	if !ok {
 		return
 	}
 
-	resp := f(*request)
+	resp := f(*prt)
 	if resp == nil {
 		return
 	}
