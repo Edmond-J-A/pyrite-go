@@ -74,7 +74,7 @@ func (s *Server) getSequence(session string) int {
 	return s.cdata[session].Sequence - 1
 }
 
-func (s *Server) Tell(session string, identifier, body string) {
+func (s *Server) Tell(session string, identifier, body string) error {
 	rBytes := PrtPackage{
 		Session:    session,
 		Identifier: identifier,
@@ -82,10 +82,11 @@ func (s *Server) Tell(session string, identifier, body string) {
 		Body:       body,
 	}.ToBytes()
 	if len(rBytes) > MAX_TRANSMIT_SIZE {
-		panic("package too long")
+		return ErrContentOverflowed
 	}
 
 	s.listener.Write(rBytes)
+	return nil
 }
 
 // 向对方发送信息，并且期待 ACK

@@ -48,5 +48,10 @@ if err != nil {
 
 // 使用 client.Tell 可以向服务器发送一条消息，并让服务器用特定的函数处理这条消息
 // client.Tell 不期望服务器对此回信。服务器处读取此消息后应当不会有任何动作
-client.Tell("check-this, but dont response", "hi! this is client!")
+err = client.Tell("check-this, but dont response", "hi! this is client!")
+if err != nil {
+	// 虽然不期望对方返回信息，但此函数仍然会检查数据长度
+	// 数据过长时，会抛出错误
+	panic(err)
+}
 ```
