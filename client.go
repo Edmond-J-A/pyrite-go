@@ -102,8 +102,6 @@ func (c *Client) DelSession()
 //
 // 此函数会阻塞线程
 func (c *Client) Promise(identifier, body string) (*PrtPackage, error) {
-	var response *PrtPackage
-	var err error
 	req := PrtPackage{
 		Session:    c.session,
 		Identifier: identifier,
@@ -122,11 +120,12 @@ func (c *Client) Promise(identifier, body string) (*PrtPackage, error) {
 	ch := make(chan bool)
 	go Timer(c.timeout, ch, false)
 
-	go func(err *error, ch chan bool) {
+	var response *PrtPackage
+	go func() {
 		defer func() { recover() }()
 		response = <-c.promiseBuffer[req.sequence]
 		ch <- true
-	}(&err, ch)
+	}()
 
 	ok := <-ch
 	close(ch)
@@ -197,6 +196,11 @@ func (c *Client) Start() {
 			panic("invalid msg recved")
 		}
 
-		go c.process(recvBuf[:n])
+		slice := make([]byte, n)
+		if copy(slice, recvBuf) != n {
+			panic("invalid copy in client main loop")
+		}
+
+		go c.process(slice)
 	}
 }
