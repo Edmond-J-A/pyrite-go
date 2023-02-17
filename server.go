@@ -11,7 +11,7 @@ import (
 )
 
 type ClientData struct {
-	Ip           *net.UDPAddr
+	Addr         *net.UDPAddr
 	LastAccept   int64
 	Sequence     int
 	SequenceBuff map[int]chan *PrtPackage
@@ -86,7 +86,7 @@ func (s *Server) Tell(session string, identifier, body string) error {
 		return ErrContentOverflowed
 	}
 
-	s.listener.WriteToUDP(rBytes, s.cdata[session].Ip)
+	s.listener.WriteToUDP(rBytes, s.cdata[session].Addr)
 	return nil
 }
 
@@ -108,7 +108,7 @@ func (s *Server) Promise(session string, identifier, body string) (string, error
 		return "", ErrContentOverflowed
 	}
 
-	s.listener.WriteToUDP(reqBytes, s.cdata[session].Ip)
+	s.listener.WriteToUDP(reqBytes, s.cdata[session].Addr)
 	s.cdata[session].SequenceBuff[s.cdata[session].Sequence] = make(chan *PrtPackage)
 	ch := make(chan bool)
 	go Timer(s.timeout, ch, false)
@@ -146,7 +146,7 @@ func (s *Server) process(addr *net.UDPAddr, recv []byte) {
 	if prtPack.Session == "" {
 		nowSession = s.GenerateSession()
 		s.cdata[nowSession] = &ClientData{
-			Ip:           addr,
+			Addr:         addr,
 			LastAccept:   now,
 			Sequence:     0,
 			SequenceBuff: make(map[int]chan *PrtPackage),
@@ -173,7 +173,7 @@ func (s *Server) process(addr *net.UDPAddr, recv []byte) {
 		Identifier: "prt-ack",
 		sequence:   prtPack.sequence,
 		Body:       resp,
-	}.ToBytes(), s.cdata[nowSession].Ip)
+	}.ToBytes(), s.cdata[nowSession].Addr)
 }
 
 func (s *Server) Start() error {
