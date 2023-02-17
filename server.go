@@ -23,7 +23,7 @@ type Server struct {
 	sessionlen  int
 	maxLifeTime int64
 	occupied    map[string]bool
-	router      map[string]func(PrtPackage) *PrtPackage
+	router      map[string]func(PrtPackage) string
 	timeout     time.Duration
 
 	cdata map[string]*ClientData
@@ -39,15 +39,17 @@ func NewServer(port int, maxTime int64, timeout time.Duration) (*Server, error) 
 
 	var server Server
 	server.port = port
-	server.router = make(map[string]func(PrtPackage) *PrtPackage)
+	server.sessionlen = 16
+	server.router = make(map[string]func(PrtPackage) string)
 	server.cdata = make(map[string]*ClientData)
 	server.maxLifeTime = maxTime
 	server.timeout = timeout
+	server.occupied = make(map[string]bool)
 	//server.router["prt-alive"] = processAlive
 	return &server, nil
 }
 
-func (s *Server) AddRouter(identifier string, controller func(PrtPackage) *PrtPackage) bool {
+func (s *Server) AddRouter(identifier string, controller func(PrtPackage) string) bool {
 	if strings.Index(identifier, "prt-") == 0 {
 		return false
 	}
@@ -84,7 +86,7 @@ func (s *Server) Tell(session string, identifier, body string) error {
 		return ErrContentOverflowed
 	}
 
-	s.listener.Write(rBytes)
+	s.listener.WriteToUDP(rBytes, s.cdata[session].Ip)
 	return nil
 }
 
@@ -162,13 +164,16 @@ func (s *Server) process(addr *net.UDPAddr, recv []byte) {
 	}
 
 	resp := f(*prtPack)
-	if resp == nil {
+	if resp == "" {
 		return
 	}
 
-	resp.Session = nowSession
-	resp.Identifier = "prt-ack"
-	s.listener.Write(resp.ToBytes())
+	s.listener.WriteToUDP(PrtPackage{
+		Session:    nowSession,
+		Identifier: "prt-ack",
+		sequence:   prtPack.sequence,
+		Body:       resp,
+	}.ToBytes(), s.cdata[nowSession].Ip)
 }
 
 func (s *Server) Start() error {

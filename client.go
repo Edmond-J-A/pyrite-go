@@ -32,11 +32,12 @@ func NewClient(serverAddr net.UDPAddr, timeout time.Duration) (*Client, error) {
 	}
 
 	return &Client{
-		server:     serverAddr,
-		router:     make(map[string]func(string) string),
-		connection: connection,
-		timeout:    timeout,
-		sequence:   0,
+		server:        serverAddr,
+		router:        make(map[string]func(string) string),
+		connection:    connection,
+		timeout:       timeout,
+		sequence:      0,
+		promiseBuffer: make(map[int]chan *PrtPackage),
 	}, nil
 }
 
@@ -45,7 +46,7 @@ func (c *Client) getSequence() int {
 	return c.sequence - 1
 }
 
-func (c *Client) Refresh() error
+// func (c *Client) Refresh() error
 
 func (c *Client) AddRouter(identifier string, controller func(string) string) bool {
 	if strings.Index(identifier, "prt-") == 0 {
@@ -127,6 +128,8 @@ func (c *Client) process(recv []byte) {
 	if err != nil {
 		return
 	}
+
+	c.session = req.Session
 
 	if req.Identifier == "prt-ack" {
 		c.processAck(req)
