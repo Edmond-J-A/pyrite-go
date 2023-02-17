@@ -2,7 +2,6 @@ package pyritego
 
 import (
 	"errors"
-	"log"
 	"net"
 	"strings"
 	"time"
@@ -136,7 +135,7 @@ func (s *Server) processAck(response *PrtPackage) {
 	delete(s.cdata[session].SequenceBuff, response.sequence)
 }
 
-func (s *Server) process(addr *net.UDPAddr, recv []byte) {
+func (s *Server) process(addr net.UDPAddr, recv []byte) {
 	prtPack, err := CastToPrtPackage(recv)
 	if err != nil {
 		return
@@ -146,7 +145,7 @@ func (s *Server) process(addr *net.UDPAddr, recv []byte) {
 	if prtPack.Session == "" {
 		nowSession = s.GenerateSession()
 		s.cdata[nowSession] = &ClientData{
-			Addr:         addr,
+			Addr:         &addr,
 			LastAccept:   now,
 			Sequence:     0,
 			SequenceBuff: make(map[int]chan *PrtPackage),
@@ -177,21 +176,24 @@ func (s *Server) process(addr *net.UDPAddr, recv []byte) {
 }
 
 func (s *Server) Start() error {
-	listener, err1 := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("0.0.0.0"), Port: s.port})
-	if err1 != nil {
+	listener, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.ParseIP("0.0.0.0"), Port: s.port})
+	if err != nil {
 		return ErrServerUDPStartingFailed
 	}
+
 	s.listener = listener
 	recvBuf := make([]byte, MAX_TRANSMIT_SIZE)
 	var n int
-	var err error
 	var addr *net.UDPAddr
 	for {
 		n, addr, err = listener.ReadFromUDP(recvBuf)
-		if err != nil {
-			log.Default()
+		if err != nil || n == 0 {
+			panic("invalid msg recved")
 		}
-		go s.process(addr, recvBuf[:n])
+
+		slice := make([]byte, n)
+		copy(slice, recvBuf)
+		go s.process(*addr, slice)
 	}
 }
 
