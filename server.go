@@ -39,10 +39,12 @@ func NewServer(port int, maxTime int64, timeout time.Duration) (*Server, error) 
 
 	var server Server
 	server.port = port
+	server.sessionlen = 16
 	server.router = make(map[string]func(PrtPackage) string)
 	server.cdata = make(map[string]*ClientData)
 	server.maxLifeTime = maxTime
 	server.timeout = timeout
+	server.occupied = make(map[string]bool)
 	//server.router["prt-alive"] = processAlive
 	return &server, nil
 }
@@ -84,7 +86,7 @@ func (s *Server) Tell(session string, identifier, body string) error {
 		return ErrContentOverflowed
 	}
 
-	s.listener.Write(rBytes)
+	s.listener.WriteToUDP(rBytes, s.cdata[session].Ip)
 	return nil
 }
 
@@ -166,12 +168,12 @@ func (s *Server) process(addr *net.UDPAddr, recv []byte) {
 		return
 	}
 
-	s.listener.Write(PrtPackage{
+	s.listener.WriteToUDP(PrtPackage{
 		Session:    nowSession,
 		Identifier: "prt-ack",
 		sequence:   prtPack.sequence,
 		Body:       resp,
-	}.ToBytes())
+	}.ToBytes(), s.cdata[nowSession].Ip)
 }
 
 func (s *Server) Start() error {
