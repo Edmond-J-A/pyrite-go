@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mo-crystal/pyrite-go/utils"
@@ -24,8 +25,8 @@ type Server struct {
 	occupied    map[string]bool
 	router      map[string]func(PrtPackage) string
 	timeout     time.Duration
-
-	cdata map[string]*ClientData
+	cdataMutex  sync.Mutex
+	cdata       map[string]*ClientData
 }
 
 var (
@@ -70,6 +71,8 @@ func (s *Server) GenerateSession() string {
 }
 
 func (s *Server) getSequence(session string) int {
+	defer s.cdataMutex.Unlock()
+	s.cdataMutex.Lock()
 	s.cdata[session].Sequence += 1
 	return s.cdata[session].Sequence - 1
 }
@@ -107,8 +110,10 @@ func (s *Server) Promise(session string, identifier, body string) (string, error
 		return "", ErrContentOverflowed
 	}
 
+	s.cdataMutex.Lock()
 	s.listener.WriteToUDP(reqBytes, s.cdata[session].Addr)
 	s.cdata[session].SequenceBuff[s.cdata[session].Sequence] = make(chan *PrtPackage)
+	s.cdataMutex.Unlock()
 	ch := make(chan bool)
 	go Timer(s.timeout, ch, false)
 	go func(err *error, ch chan bool) {
@@ -116,23 +121,29 @@ func (s *Server) Promise(session string, identifier, body string) (string, error
 		response = <-s.cdata[session].SequenceBuff[s.cdata[session].Sequence]
 		ch <- true
 	}(&err, ch)
+
 	ok := <-ch
 	if !ok {
 		return "", ErrTimeout
 	}
+
 	return response.Body, nil
 }
 
 func (s *Server) processAck(response *PrtPackage) {
 	session := response.Session
+	s.cdataMutex.Lock()
 	ch, ok := s.cdata[session].SequenceBuff[response.sequence]
+	s.cdataMutex.Unlock()
 	if !ok {
 		return
 	}
 
 	ch <- response
 	close(ch)
+	s.cdataMutex.Lock()
 	delete(s.cdata[session].SequenceBuff, response.sequence)
+	s.cdataMutex.Unlock()
 }
 
 func (s *Server) process(addr net.UDPAddr, recv []byte) {
@@ -144,12 +155,14 @@ func (s *Server) process(addr net.UDPAddr, recv []byte) {
 	nowSession := prtPack.Session
 	if prtPack.Session == "" {
 		nowSession = s.GenerateSession()
+		s.cdataMutex.Lock()
 		s.cdata[nowSession] = &ClientData{
 			Addr:         &addr,
 			LastAccept:   now,
 			Sequence:     0,
 			SequenceBuff: make(map[int]chan *PrtPackage),
 		}
+		s.cdataMutex.Unlock()
 	}
 
 	if prtPack.Identifier == "prt-ack" {
@@ -167,12 +180,14 @@ func (s *Server) process(addr net.UDPAddr, recv []byte) {
 		return
 	}
 
+	s.cdataMutex.Lock()
 	s.listener.WriteToUDP(PrtPackage{
 		Session:    nowSession,
 		Identifier: "prt-ack",
 		sequence:   prtPack.sequence,
 		Body:       resp,
 	}.ToBytes(), s.cdata[nowSession].Addr)
+	s.cdataMutex.Unlock()
 }
 
 func (s *Server) Start() error {
@@ -185,6 +200,7 @@ func (s *Server) Start() error {
 	recvBuf := make([]byte, MAX_TRANSMIT_SIZE)
 	var n int
 	var addr *net.UDPAddr
+	go s.GC()
 	for {
 		n, addr, err = listener.ReadFromUDP(recvBuf)
 		if err != nil || n == 0 {
@@ -198,10 +214,17 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) GC() {
-	nowTime := time.Now().UnixMicro()
-	for k, v := range s.cdata {
-		if nowTime-v.LastAccept >= s.maxLifeTime {
-			delete(s.cdata, k)
+	for {
+		nowTime := time.Now().UnixMicro()
+		for k, v := range s.cdata {
+			if nowTime-v.LastAccept >= s.maxLifeTime {
+				delete(s.cdata, k)
+			}
+		}
+		endTime := time.Now().UnixMicro()
+		if endTime-nowTime-s.maxLifeTime > 0 {
+			sleepTime := time.Duration(endTime - nowTime - s.maxLifeTime)
+			time.Sleep(sleepTime)
 		}
 	}
 }
