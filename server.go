@@ -22,7 +22,6 @@ type Server struct {
 	port        int
 	sessionlen  int
 	maxLifeTime int64
-	occupied    map[string]bool
 	router      map[string]func(PrtPackage) string
 	timeout     time.Duration
 	cdataMutex  sync.Mutex
@@ -44,7 +43,6 @@ func NewServer(port int, maxTime int64, timeout time.Duration) (*Server, error) 
 	server.cdata = make(map[string]*ClientData)
 	server.maxLifeTime = maxTime
 	server.timeout = timeout
-	server.occupied = make(map[string]bool)
 	//server.router["prt-alive"] = processAlive
 	return &server, nil
 }
@@ -62,10 +60,12 @@ func (s *Server) GenerateSession() string {
 	var ret string
 	for {
 		ret = utils.RandomString(s.sessionlen)
-		if _, ok := s.occupied[string(ret)]; !ok {
-			s.occupied[string(ret)] = true
+		s.cdataMutex.Lock()
+		if _, ok := s.cdata[ret]; !ok {
+			s.cdataMutex.Unlock()
 			break
 		}
+		s.cdataMutex.Unlock()
 	}
 	return ret
 }
